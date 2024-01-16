@@ -117,7 +117,15 @@ def upload_attachment(item, file, comment=None):
 
 
 def usage():
-    print("""partkeepr-to-inventree [options]""")
+    print("""partkeepr-to-inventree [options]
+    -v     --verbose        operate more verbosely
+    -h     --help           show this usage information
+    -p URL --partkeepr=URL  use this URL to connect PartKeepr
+    -i URL --inventree=URL  use this URL to connect InvenTree
+    -w X   --wipe=X         wipe given kind of objects
+           --wipe-all       wipe all objects
+object kinds are Part, PartCategory, StockLocation, Company
+URLs are given as http[s]://USER:PASSWORD@host.do.main""")
 
 
 
