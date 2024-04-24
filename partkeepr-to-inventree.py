@@ -473,20 +473,26 @@ def main():
                 if attachment["isImage"]:
                     # example: SC16IS750IPW,128
                     path = getImageFromPartkeepr(attachment["@id"], partkeepr_url, partkeepr_auth, filename=attachment["originalFilename"])
-                    if verbose:
-                        print(f'uploading image {path} for Part "{name}"')
-                    upload_image(ipart, path)
-                    os.unlink(path)
+                    if path != None: #sometimes the source file might be deleted in partkeepr -> skip these
+                        if verbose:
+                            print(f'uploading image {path} for Part "{name}"')
+                        upload_image(ipart, path)
+                        os.unlink(path)
+                    else:
+                        print(f'Failed to upload file "{attachment["originalFilename"]}" to part "{part["name"]}". Partkeepr did not provide the file!')
                 else:
                     path = getFileFromPartkeepr(attachment["@id"], partkeepr_url, partkeepr_auth, filename=attachment["originalFilename"])
-                    if verbose:
-                        print(f'uploading attachment {path} for Part "{name}"')
-                    if (attachment["description"] != None) and (len(attachment["description"]) >= 1):
-                        comment = attachment["description"]
+                    if path != None: #sometimes the source file might be deleted in partkeepr -> skip these
+                        if verbose:
+                            print(f'uploading attachment {path} for Part "{name}"')
+                        if (attachment["description"] != None) and (len(attachment["description"]) >= 1):
+                            comment = attachment["description"]
+                        else:
+                            comment = None
+                        upload_attachment(ipart, path, comment=comment)
+                        os.unlink(path)
                     else:
-                        comment = None
-                    upload_attachment(ipart, path, comment=comment)
-                    os.unlink(path)
+                        print(f'Failed to upload file "{attachment["originalFilename"]}" to part "{part["name"]}". Partkeepr did not provide the file!')
 
 
 
