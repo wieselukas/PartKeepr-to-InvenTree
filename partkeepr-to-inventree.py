@@ -374,7 +374,6 @@ def main():
             price = float(part["averagePrice"])
         else:  
             price = None
-        # there might duplicates purely by name, hence we need revisions to differentiate
         revision = None
         if ("description" in part) and (part["description"] != None) and (len(part["description"]) >= 1):
             description = part["description"]
@@ -386,15 +385,6 @@ def main():
             ipn = '#' + str(part["@id"].rpartition("/")[2])
         else:
             ipn = part["internalPartNumber"]
-        if ("footprint" in part) and (part["footprint"] != None) and "name" in part["footprint"]:
-            revision = part["footprint"]["name"]
-        if len(description) >= 1:
-            if revision:
-                revision = f'{revision}, {description}'
-            else:
-                revision = description
-        if revision and (len(revision) > 100):
-            revision = revision[:97] + "..."
         units = None
         if ("partUnit" in part) and (part["partUnit"] != None) and "shortName" in part["partUnit"]:
             units = part["partUnit"]["shortName"]
