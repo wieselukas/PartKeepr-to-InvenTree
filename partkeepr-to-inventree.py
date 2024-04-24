@@ -390,8 +390,9 @@ def main():
         units = None
         if ("partUnit" in part) and (part["partUnit"] != None) and "shortName" in part["partUnit"]:
             units = part["partUnit"]["shortName"]
+        quantity = max(0,part["stockLevel"]) # Inventree does not allow stock below 0
         if verbose:
-            print(f'create Part "{part["name"]}", category:{category_pk}, quantity:{part["stockLevel"]}')
+            print(f'create Part "{part["name"]}", category:{category_pk}, quantity:{quantity}')
         ipart = create(Part, inventree, {
             'name': name,
             'description': description,
@@ -409,10 +410,10 @@ def main():
             'assembly': part["metaPart"],
             })
         if verbose:
-            print(f'create StockItem "{part["name"]}", category:{category_pk}, quantity:{part["stockLevel"]}')
+            print(f'create StockItem "{part["name"]}", category:{category_pk}, quantity:{quantity}')
         istock = create(StockItem, inventree, {
             'part': ipart.pk,
-            'quantity': part["stockLevel"],
+            'quantity': quantity,
             'averagePrice': price,
             'location': location_pk,
         })
