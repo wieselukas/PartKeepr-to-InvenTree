@@ -378,6 +378,10 @@ def main():
             description = ""
         if len(description) > 100:
             description = description[:97] + "..."
+        if part["internalPartNumber"] == '':
+            ipn = '#' + str(part["@id"].rpartition("/")[2])
+        else:
+            ipn = part["internalPartNumber"]
         if ("footprint" in part) and (part["footprint"] != None) and "name" in part["footprint"]:
             revision = part["footprint"]["name"]
         if len(description) >= 1:
@@ -396,7 +400,7 @@ def main():
         ipart = create(Part, inventree, {
             'name': name,
             'description': description,
-            'IPN': part["internalPartNumber"],
+            'IPN': ipn,
             'category': category_pk,
             'location': location_pk,
             'active': True,
