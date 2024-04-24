@@ -27,6 +27,8 @@ verbose = False
 def getFromPartkeepr(url, base, auth):
 
     full_url = f'{base}{url}?itemsPerPage=100000'
+    full_url = full_url.replace('/partkeepr/partkeepr','/partkeepr')
+
     r = requests.get(full_url, auth=auth)
 
     if (r.status_code == 200):
@@ -38,6 +40,7 @@ def getFromPartkeepr(url, base, auth):
 def getImageFromPartkeepr(url, base, auth, filename="image"):
 
     full_url = f'{base}{url}/getImage'
+    full_url = full_url.replace('/partkeepr/partkeepr','/partkeepr')
     r = requests.get(full_url, auth=auth, stream=True)
 
     if (r.status_code == 200):
@@ -52,6 +55,7 @@ def getImageFromPartkeepr(url, base, auth, filename="image"):
 def getFileFromPartkeepr(url, base, auth, filename="file"):
 
     full_url = f'{base}{url}/getFile'
+    full_url = full_url.replace('/partkeepr/partkeepr','/partkeepr')
     r = requests.get(full_url, auth=auth, stream=True)
 
     if (r.status_code == 200):
