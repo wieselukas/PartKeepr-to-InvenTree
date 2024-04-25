@@ -118,7 +118,35 @@ def upload_attachment(item, file, comment=None):
                 break
             time.sleep(3)
 
+def create_it_category_w_parent(category, category_map, parent_id, inventree_api):
+    category_id = int(category['@id'].rpartition("/")[2])
 
+    if parent_id:
+        parent_it_pk = category_map[parent_id]
+    else:
+        parent_it_pk = None
+
+    if verbose:
+        print(f'create PartCategory "{category["name"]}", parent:{parent_it_pk}')
+    icategory = create(PartCategory, inventree_api, {
+        'name': category["name"],
+        'description': category["description"],
+        'parent': parent_it_pk,
+        })
+    return category_id, icategory
+
+def create_child_categories(parent_category,category_map, inventree_api):
+    '''recursively runs through all childs, child-childs, ... and creates them in inventree'''
+    for sub_category in parent_category["children"]:
+        if not int(sub_category['@id'].rpartition("/")[2]) in category_map:
+            # category doesn't yet exist, create it!
+            parent_id = int(sub_category['parent'].rpartition("/")[2])
+            id, icategory = create_it_category_w_parent(sub_category, category_map, parent_id, inventree_api)
+            category_map[id] = icategory.pk
+        # continue recursing through children entries
+        parent_category = sub_category
+        category_map = create_child_categories(parent_category, category_map, inventree_api)
+    return category_map
 
 def usage():
     print("""partkeepr-to-inventree [options]
@@ -295,20 +323,17 @@ def main():
 
     category_map = {} # mapped by @id
     for category in categories:
-        id = int(category['@id'].rpartition("/")[2])
-        if category["parent"]:
-            parent_id = int(category["parent"]["@id"].rpartition("/")[2])
-            parent_pk = category_map[parent_id]
-        else:
-            parent_pk = None
-        if verbose:
-            print(f'create PartCategory "{category["name"]}", parent:{parent_pk}')
-        icategory = create(PartCategory, inventree, {
-            'name': category["name"],
-            'description': category["description"],
-            'parent': parent_pk,
-            })
-        category_map[id] = icategory.pk
+        if not int(category['@id'].rpartition("/")[2]) in category_map:
+            if category["parent"]:
+                parent_id = int(category["parent"]["@id"].rpartition("/")[2])
+            else:
+                parent_id = None
+
+            id, icategory = create_it_category_w_parent(category, category_map, parent_id, inventree)
+            category_map[id] = icategory.pk
+            
+            parent_category = category
+            category_map = create_child_categories(parent_category,category_map, inventree)
 
     # we convert Partkeepr location categories and locations to an
     # IntenTree hiercarchy of stock locations
