@@ -472,6 +472,8 @@ def main():
                     print(f'distributor "{distributor["distributor"]["name"]}" not known as a Company while creating SupplierPart {name}')
                 if len(distributor["sku"]) >= 1:
                     sku = distributor["sku"]
+                elif len(distributor["orderNumber"]) >= 1:
+                    sku = distributor["orderNumber"]
                 else:
                     sku = "?" # must not be an empty string?!
                     if verbose:
