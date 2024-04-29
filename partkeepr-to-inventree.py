@@ -508,21 +508,23 @@ def main():
                             'part': ipart.pk,
                             'supplier': spk,
                             'SKU': sku,
-                            'pack_quantity': distributor['packagingUnit'],
                             })
                         supplier_part_map[key] = ispart
-                        if distributor['price'] != None and distributor['price'] != "0.0000":
-                            if distributor['currency'] == None:
-                                currency = default_currency
-                            I_pr_break = create(SupplierPriceBreak, inventree, {
-                                'part': ispart.pk,
-                                'quantity': distributor['packagingUnit'],
-                                'price': distributor['price'],
-                                'supplier': spk,
-                                'currency': 'EUR'
-                            })
                     else:
-                        print(f'there is already a SupplierPart matching "{key}" for Part "{name}"')
+                        if verbose:
+                            print(f'SupplierPart matching "{key}" for Part "{name}" was already created. Just add additional PriceBreak.')
+                    if distributor['price'] != None and distributor['price'] != "0.0000":
+                        if distributor['currency'] == None:
+                            currency = default_currency
+                        else:
+                            currency = distributor['currency']
+                        I_pr_break = create(SupplierPriceBreak, inventree, {
+                            'part': supplier_part_map[key].pk,
+                            'quantity': distributor['packagingUnit'],
+                            'price': distributor['price'],
+                            'supplier': spk,
+                            'currency': currency
+                        })
         if (part["attachments"] != None) and len(part["attachments"]) >= 1:
             for attachment in part["attachments"]:
                 if attachment["isImage"]:
