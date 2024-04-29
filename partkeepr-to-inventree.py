@@ -13,12 +13,13 @@ import os
 from inventree.api import InvenTreeAPI
 from inventree.part import PartCategory, Part
 from inventree.stock import StockItem, StockLocation
-from inventree.company import Company, ManufacturerPart, SupplierPart
+from inventree.company import Company, ManufacturerPart, SupplierPart, SupplierPriceBreak
 
 
 
 DEFAULT_PARTKEEPR = "https://admin:password@partkeepr.ibr.cs.tu-bs.de"
 DEFAULT_INVENTREE = "http://admin:password@inventree.ibr.cs.tu-bs.de:1337"
+DEFAULT_CURRENCY = "EUR"
 
 verbose = False
 
@@ -156,6 +157,7 @@ def usage():
     -i URL --inventree=URL  use this URL to connect InvenTree
     -w X   --wipe=X         wipe given kind of objects
            --wipe-all       wipe all objects
+    --default-currency=STR  use 3 letter currency string as default
 object kinds are Part, PartCategory, StockLocation, Company
 URLs are given as http[s]://USER:PASSWORD@host.do.main""")
 
@@ -166,13 +168,14 @@ def main():
     global verbose
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hvp:i:w:", ["help", "verbose", "partkeepr=", "inventree=", "wipe=", "wipe-all"])
+        opts, args = getopt.getopt(sys.argv[1:], "hvp:i:w:", ["help", "verbose", "partkeepr=", "inventree=", "wipe=", "wipe-all", "default-currency="])
     except getopt.GetoptError as err:
         usage()
         sys.exit(2)
 
     partkeepr_auth_url = DEFAULT_PARTKEEPR
     inventree_auth_url = DEFAULT_INVENTREE
+    default_currency = DEFAULT_CURRENCY
     wipe = []
 
     for o, a in opts:
@@ -189,6 +192,8 @@ def main():
             wipe.append(a)
         elif o in ("--wipe-all"):
             wipe = ["Part", "PartCategory", "StockLocation", "Company" ]
+        elif o in ("--default-currency"):
+            default_currency = a
 
     parts1 = inventree_auth_url.partition("//")
     parts2 = parts1[2].rpartition("@")
@@ -489,9 +494,19 @@ def main():
                             'part': ipart.pk,
                             'supplier': spk,
                             'SKU': sku,
-                            #'link': # ??? orderNumber ???
+                            'pack_quantity': distributor['packagingUnit'],
                             })
                         supplier_part_map[key] = ispart
+                        if distributor['price'] != None and distributor['price'] != "0.0000":
+                            if distributor['currency'] == None:
+                                currency = default_currency
+                            I_pr_break = create(SupplierPriceBreak, inventree, {
+                                'part': ispart.pk,
+                                'quantity': distributor['packagingUnit'],
+                                'price': distributor['price'],
+                                'supplier': spk,
+                                'currency': 'EUR'
+                            })
                     else:
                         print(f'there is already a SupplierPart matching "{key}" for Part "{name}"')
         if (part["attachments"] != None) and len(part["attachments"]) >= 1:
