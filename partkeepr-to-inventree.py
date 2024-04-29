@@ -388,6 +388,7 @@ def main():
     print(f'found {len(parts)} parts, creating Parts, StockItems, ')
 
     supplier_part_map = {} 
+    created_IPNs_map = {}
     for part in parts:
         #print(part)
         category_pk = category_map[int(part["category"]["@id"].rpartition("/")[2])]
@@ -419,24 +420,37 @@ def main():
         if ("partUnit" in part) and (part["partUnit"] != None) and "shortName" in part["partUnit"]:
             units = part["partUnit"]["shortName"]
         quantity = max(0,part["stockLevel"]) # Inventree does not allow stock below 0
-        if verbose:
-            print(f'create Part "{part["name"]}", category:{category_pk}, quantity:{quantity}')
-        ipart = create(Part, inventree, {
-            'name': name,
-            'description': description,
-            'IPN': ipn,
-            'category': category_pk,
-            'location': location_pk,
-            'active': True,
-            'virtual': False,
-            'minimum_stock': part["minStockLevel"],
-            'comment': part["comment"],
-            'revision': revision,
-            #'link': xxx,
-            #'image': xxx,
-            'units': units,
-            'assembly': part["metaPart"],
+        if ipn not in created_IPNs_map:
+            if verbose:
+                print(f'create Part "{part["name"]}", category:{category_pk}, quantity:{quantity}')
+            ipart = create(Part, inventree, {
+                'name': name,
+                'description': description,
+                'IPN': ipn,
+                'category': category_pk,
+                'location': location_pk,
+                'active': True,
+                'virtual': False,
+                'minimum_stock': part["minStockLevel"],
+                'comment': part["comment"],
+                'revision': revision,
+                #'link': xxx,
+                #'image': xxx,
+                'units': units,
+                'assembly': part["metaPart"],
+                })
+            if ipart != None:
+                created_IPNs_map[ipn] = ipart
+        else: # Part Entry already created, only add the StockItem and continue with next Part
+            if verbose:
+                print(f'create additional StockItem for "{created_IPNs_map[ipn]["name"]}", category:{category_pk}, quantity:{quantity}')
+            istock = create(StockItem, inventree, {
+                'part': created_IPNs_map[ipn].pk,
+                'quantity': quantity,
+                'averagePrice': price,
+                'location': location_pk,
             })
+            continue
         if verbose:
             print(f'create StockItem "{part["name"]}", category:{category_pk}, quantity:{quantity}')
         istock = create(StockItem, inventree, {
