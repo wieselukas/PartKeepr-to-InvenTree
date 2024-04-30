@@ -432,7 +432,7 @@ def main():
                 'active': True,
                 'virtual': False,
                 'minimum_stock': part["minStockLevel"],
-                'comment': part["comment"],
+                'notes': part["comment"],
                 'revision': revision,
                 #'link': xxx,
                 #'image': xxx,
