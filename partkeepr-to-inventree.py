@@ -388,11 +388,11 @@ def main():
     print(f'found {len(parts)} parts, creating Parts, StockItems, ')
 
     supplier_part_map = {} 
-    created_IPNs_map = {}
+    created_IPNs_map = {} #key = "IPN"+"name"
     for part in parts:
         #print(part)
         category_pk = category_map[int(part["category"]["@id"].rpartition("/")[2])]
-        name = part["name"]
+        name = part["name"].strip() #remove leading + trailing space, as it will anyways be done by inventree api
         if part["storageLocation"]:
             try:
                 location_pk = location_map[part["storageLocation"]["@id"]]
@@ -412,7 +412,7 @@ def main():
             description = ""
         if len(description) > 100:
             description = description[:97] + "..."
-        if part["internalPartNumber"] == '':
+        if part["internalPartNumber"].strip() == '' or part["internalPartNumber"] == '-':
             ipn = '#' + str(part["@id"].rpartition("/")[2])
         else:
             ipn = part["internalPartNumber"]
@@ -420,7 +420,8 @@ def main():
         if ("partUnit" in part) and (part["partUnit"] != None) and "shortName" in part["partUnit"]:
             units = part["partUnit"]["shortName"]
         quantity = max(0,part["stockLevel"]) # Inventree does not allow stock below 0
-        if ipn not in created_IPNs_map:
+        if (ipn+name) not in created_IPNs_map or name != created_IPNs_map[(ipn+name)]['name']:
+            #check entry with same IPN and name were created before
             if verbose:
                 print(f'create Part "{part["name"]}", category:{category_pk}, quantity:{quantity}')
             ipart = create(Part, inventree, {
@@ -440,12 +441,12 @@ def main():
                 'assembly': part["metaPart"],
                 })
             if ipart != None:
-                created_IPNs_map[ipn] = ipart
+                created_IPNs_map[(ipn+name)] = ipart
         else: # Part Entry already created, only add the StockItem and continue with next Part
             if verbose:
                 print(f'create additional StockItem for "{created_IPNs_map[ipn]["name"]}", category:{category_pk}, quantity:{quantity}')
             istock = create(StockItem, inventree, {
-                'part': created_IPNs_map[ipn].pk,
+                'part': created_IPNs_map[(ipn+name)].pk,
                 'quantity': quantity,
                 'averagePrice': price,
                 'location': location_pk,
