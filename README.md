@@ -1,9 +1,11 @@
 # PartKeepr to InvenTree
 
+**Forked from the original implementation done by @frsteinb (https://gitlab.ibr.cs.tu-bs.de/steinb/partkeepr-to-inventree)**
+
 A simple tool to convert data from PartKeepr to InvenTree.
 It handles many, though not all data structures.
 
-Usage:
+## Usage:
 
 ./partkeepr-to-inventree.py -p https://USER:PASSWORD@partkeepr.example.com -i http://admin:PASSWORD@inventree.example.com --wipe-all
 
