@@ -444,7 +444,7 @@ def main():
                 created_IPNs_map[(ipn+name)] = ipart
         else: # Part Entry already created, only add the StockItem and continue with next Part
             if verbose:
-                print(f'create additional StockItem for "{created_IPNs_map[ipn]["name"]}", category:{category_pk}, quantity:{quantity}')
+                print(f'create additional StockItem for "{created_IPNs_map[ipn+name]["name"]}", category:{category_pk}, quantity:{quantity}')
             istock = create(StockItem, inventree, {
                 'part': created_IPNs_map[(ipn+name)].pk,
                 'quantity': quantity,
