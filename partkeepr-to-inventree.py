@@ -222,6 +222,7 @@ def main():
                     print(f'delete Part "{part.name}"')
                 try:
                     part._data['active'] = False
+                    part._data['image'] = None
                     part.save()
                     part.delete()
                 except Exception as err:
