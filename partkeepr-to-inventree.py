@@ -222,7 +222,7 @@ def main():
                     print(f'delete Part "{part.name}"')
                 try:
                     part._data['active'] = False
-                    part._data['image'] = None
+                    part._data['image'] = None      # needs to be removed, as otherwise saving doesn't work
                     part.save()
                     part.delete()
                 except Exception as err:
@@ -525,7 +525,7 @@ def main():
                             'quantity': distributor['packagingUnit'],
                             'price': distributor['price'],
                             'supplier': spk,
-                            'currency': currency
+                            'price_currency': currency
                         })
         if (part["attachments"] != None) and len(part["attachments"]) >= 1:
             for attachment in part["attachments"]:
