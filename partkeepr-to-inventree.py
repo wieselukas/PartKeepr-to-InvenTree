@@ -9,6 +9,7 @@ import time
 import shutil
 import tempfile
 import os
+import datetime
 
 from inventree.api import InvenTreeAPI
 from inventree.part import PartCategory, Part
@@ -26,8 +27,11 @@ verbose = False
 
 
 def getFromPartkeepr(url, base, auth):
+    sep = '?'
+    if('?' in url):
+        sep='&'
 
-    full_url = f'{base}{url}?itemsPerPage=100000'
+    full_url = f'{base}{url}{sep}itemsPerPage=100000'
     full_url = full_url.replace('/partkeepr/partkeepr','/partkeepr')
 
     r = requests.get(full_url, auth=auth)
@@ -149,6 +153,61 @@ def create_child_categories(parent_category,category_map, inventree_api):
         category_map = create_child_categories(parent_category, category_map, inventree_api)
     return category_map
 
+def retry(retries, func, *args, **kwargs):
+    for attempt in range(retries):
+        try:
+            func(*args, **kwargs)
+            break
+        except Exception as e:
+            print(f'Error running {func.__name__} for {retries}. time. Error message:')
+            print(f'\t{str(e)}')
+            print('trying again...')
+
+
+def copy_stock_history(pkpr_key, partkeepr_url, partkeepr_auth, inventree_api, stock_item_pk):
+    pkpr_filter = '[{"subfilters":[],"property":"part","operator":"=","value":"/partkeepr/api/parts/' + str(pkpr_key) +'"}]'
+    pkpr_stock_changes = getFromPartkeepr(f'/api/stock_entries?filter={pkpr_filter}', partkeepr_url, partkeepr_auth)
+
+    if len(pkpr_stock_changes) == 0:
+        if verbose:
+            print('No Stock changes available for this part. Continue..')
+        return
+
+    stock_changes = [entr['stockLevel'] for entr in pkpr_stock_changes]
+    
+    #generate stock changes without crossing below 0 (every stock change below 0 is no stock change)
+    stock_levels = [sum(stock_changes[0:i+1]) for i in range(len(stock_changes))]
+    stock_levels_no_negative = [max(0,entr) for entr in stock_levels] # delete negative entries for inventree
+    stock_levels_no_negative.insert(0,0)
+    stock_changes_no_negative = [0 - (stock_levels_no_negative[i] - el) for i,el in enumerate(stock_levels_no_negative[1:])]
+
+    if verbose:
+       print(f"Copying stock history for Part: {pkpr_stock_changes[0]['part']['name']}")
+    #upload to Inventree
+    part_StockItem = StockItem(api=inventree_api, pk=stock_item_pk)
+          
+    for i, pkpr_el in enumerate(pkpr_stock_changes):
+        time = datetime.datetime.strptime(pkpr_el['dateTime'], '%Y-%m-%dT%H:%M:%S%z').strftime('%d.%m.%Y %H:%M')
+        comment = pkpr_el['comment'] if pkpr_el['comment'] != None else '-'
+        user = pkpr_el['user']['username'] if pkpr_el['user'] else ''
+        note = f"PartKeepr {time} {user}: {comment}"
+
+        if stock_changes[i] != stock_changes_no_negative[i]:
+            note += ' (Entry adjusted to prevent below 0 stock!)'
+
+        price = None
+        if pkpr_el['price']:
+            if float(pkpr_el['price']) == 0:
+                price = float(pkpr_el['price'])
+
+        stock_update = stock_changes_no_negative[i]
+        
+        if stock_update > 0:
+            retry(10,part_StockItem.addStock, quantity=stock_update, notes = note)
+        else:
+            retry(10,part_StockItem.removeStock, quantity=-stock_update, notes = note)
+
+
 def usage():
     print("""partkeepr-to-inventree [options]
     -v     --verbose        operate more verbosely
@@ -158,6 +217,7 @@ def usage():
     -w X   --wipe=X         wipe given kind of objects
            --wipe-all       wipe all objects
     --default-currency=STR  use 3 letter currency string as default
+    --copy-history          copy stock history into InvenTree Stock Tracking
 object kinds are Part, PartCategory, StockLocation, Company
 URLs are given as http[s]://USER:PASSWORD@host.do.main""")
 
@@ -168,7 +228,8 @@ def main():
     global verbose
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hvp:i:w:", ["help", "verbose", "partkeepr=", "inventree=", "wipe=", "wipe-all", "default-currency="])
+        opts, args = getopt.getopt(sys.argv[1:], "hvp:i:w:", ["help", "verbose", "partkeepr=", "inventree=", "wipe=", 
+                                                              "wipe-all", "default-currency=", "copy-history"])
     except getopt.GetoptError as err:
         usage()
         sys.exit(2)
@@ -194,6 +255,8 @@ def main():
             wipe = ["Part", "PartCategory", "StockLocation", "Company" ]
         elif o in ("--default-currency"):
             default_currency = a
+        elif o in ("--copy-history"):
+            copy_history = True
 
     parts1 = inventree_auth_url.partition("//")
     parts2 = parts1[2].rpartition("@")
@@ -448,19 +511,35 @@ def main():
                 print(f'create additional StockItem for "{created_IPNs_map[ipn+name]["name"]}", category:{category_pk}, quantity:{quantity}')
             istock = create(StockItem, inventree, {
                 'part': created_IPNs_map[(ipn+name)].pk,
-                'quantity': quantity,
-                'averagePrice': price,
+                'quantity': 0 if copy_history else quantity,
+                'delete_on_deplete': False,
                 'location': location_pk,
             })
+            if copy_history:
+                copy_stock_history(
+                    pkpr_key = int(part["@id"].rpartition("/")[2]),
+                    partkeepr_url = partkeepr_url,
+                    partkeepr_auth = partkeepr_auth,
+                    inventree_api = inventree,
+                    stock_item_pk = istock.pk,
+                )
             continue
         if verbose:
             print(f'create StockItem "{part["name"]}", category:{category_pk}, quantity:{quantity}')
         istock = create(StockItem, inventree, {
             'part': ipart.pk,
-            'quantity': quantity,
-            'averagePrice': price,
+            'quantity': 0 if copy_history else quantity,
+            'delete_on_deplete': False,            
             'location': location_pk,
         })
+        if copy_history:
+            copy_stock_history(
+                pkpr_key = int(part["@id"].rpartition("/")[2]),
+                partkeepr_url = partkeepr_url,
+                partkeepr_auth = partkeepr_auth,
+                inventree_api = inventree,
+                stock_item_pk = istock.pk,
+            )
         if (part["manufacturers"] != None) and (len(part["manufacturers"]) >= 1):
             for manufacturer in part["manufacturers"]:
                 if manufacturer["manufacturer"] == None:
