@@ -190,7 +190,7 @@ def copy_stock_history(pkpr_key, partkeepr_url, partkeepr_auth, inventree_api, s
         time = datetime.datetime.strptime(pkpr_el['dateTime'], '%Y-%m-%dT%H:%M:%S%z').strftime('%d.%m.%Y %H:%M')
         comment = pkpr_el['comment'] if pkpr_el['comment'] != None else '-'
         user = pkpr_el['user']['username'] if pkpr_el['user'] else ''
-        note = f"PartKeepr {time} {user}: {comment}"
+        note = f"(PartKeepr) {time} {user}: {comment}"
 
         if stock_changes[i] != stock_changes_no_negative[i]:
             note += ' (Entry adjusted to prevent below 0 stock!)'
@@ -484,6 +484,9 @@ def main():
         if ("partUnit" in part) and (part["partUnit"] != None) and "shortName" in part["partUnit"]:
             units = part["partUnit"]["shortName"]
         quantity = max(0,part["stockLevel"]) # Inventree does not allow stock below 0
+        notes = f"**Partkeepr Status:** {part['status']}\n\n" if part["status"] != "" else ""
+        notes += f"**Partkeepr Condition:** {part['partCondition']}\n\n" if part["partCondition"] != "" else ""
+        notes += part["comment"]
         if (ipn+name) not in created_IPNs_map or name != created_IPNs_map[(ipn+name)]['name']:
             #check entry with same IPN and name were created before
             if verbose:
@@ -497,7 +500,7 @@ def main():
                 'active': True,
                 'virtual': False,
                 'minimum_stock': part["minStockLevel"],
-                'notes': part["comment"],
+                'notes': notes,
                 'revision': revision,
                 #'link': xxx,
                 #'image': xxx,
