@@ -486,7 +486,6 @@ def main():
             units = part["partUnit"]["shortName"]
         quantity = max(0,part["stockLevel"]) # Inventree does not allow stock below 0
         notes = f"**Partkeepr Status:** {part['status']}\n\n" if part["status"] != "" else ""
-        notes += f"**Partkeepr Condition:** {part['partCondition']}\n\n" if part["partCondition"] != "" else ""
         notes += part["comment"]
         if (ipn+name) not in created_IPNs_map or name != created_IPNs_map[(ipn+name)]['name']:
             #check entry with same IPN and name were created before
@@ -518,6 +517,7 @@ def main():
                 'quantity': 0 if copy_history else quantity,
                 'delete_on_deplete': False,
                 'location': location_pk,
+                'notes': part['partCondition'] if part["partCondition"] != "" else None
             })
             if copy_history:
                 copy_stock_history(
@@ -535,6 +535,7 @@ def main():
             'quantity': 0 if copy_history else quantity,
             'delete_on_deplete': False,            
             'location': location_pk,
+            'notes': part['partCondition'] if part["partCondition"] != "" else None
         })
         if copy_history:
             copy_stock_history(
