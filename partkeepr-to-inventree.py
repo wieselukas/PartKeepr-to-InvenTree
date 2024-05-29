@@ -544,6 +544,7 @@ def main():
                 inventree_api = inventree,
                 stock_item_pk = istock.pk,
             )
+        impart = None
         if (part["manufacturers"] != None) and (len(part["manufacturers"]) >= 1):
             for manufacturer in part["manufacturers"]:
                 if manufacturer["manufacturer"] == None:
@@ -569,11 +570,17 @@ def main():
                         })
         if (part["distributors"] != None) and (len(part["distributors"]) >= 1):
             for distributor in part["distributors"]:
+                #assign distributor
                 if distributor["distributor"]["name"] in company_map:
                     spk = company_map[distributor["distributor"]["name"]]
                 else:
                     spk = None
                     print(f'distributor "{distributor["distributor"]["name"]}" not known as a Company while creating SupplierPart {name}')
+                #assign manufacturer
+                mpk = None
+                if impart != None and len(part["manufacturers"]) == 1: #assignment only clear if only one manufacturer is assigned
+                    mpk = impart.pk
+                #assign sku
                 if len(distributor["sku"]) >= 1:
                     sku = distributor["sku"]
                 elif len(distributor["orderNumber"]) >= 1:
@@ -593,6 +600,7 @@ def main():
                             'part': ipart.pk,
                             'supplier': spk,
                             'SKU': sku,
+                            'manufacturer_part': mpk,
                             })
                         supplier_part_map[key] = ispart
                     else:
