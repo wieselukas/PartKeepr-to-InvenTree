@@ -10,6 +10,7 @@ import shutil
 import tempfile
 import os
 import datetime
+import re
 
 from inventree.api import InvenTreeAPI
 from inventree.part import PartCategory, Part
@@ -611,17 +612,19 @@ def main():
                         })
         if (part["attachments"] != None) and len(part["attachments"]) >= 1:
             for attachment in part["attachments"]:
+                filename = re.sub('\?[^ ]{0,}','',attachment["originalFilename"]) # remove ?[...] (sometimes found in pkpr after file type)
                 # upload first found image as displayed picture
                 if attachment["isImage"] and ipart._data['image'] == None:
-                    path = getImageFromPartkeepr(attachment["@id"], partkeepr_url, partkeepr_auth, filename=attachment["originalFilename"])
+                    
+                    path = getImageFromPartkeepr(attachment["@id"], partkeepr_url, partkeepr_auth, filename=filename)
                     if path != None: #sometimes the source file might be deleted in partkeepr -> skip these
                         if verbose:
                             print(f'uploading image {path} for Part "{name}"')
                         upload_image(ipart, path)
                         os.unlink(path)
                     else:
-                        print(f'Failed to upload file "{attachment["originalFilename"]}" to part "{part["name"]}". Partkeepr did not provide the file!')
-                path = getFileFromPartkeepr(attachment["@id"], partkeepr_url, partkeepr_auth, filename=attachment["originalFilename"])
+                        print(f'Failed to upload file "{filename}" to part "{part["name"]}". Partkeepr did not provide the file!')
+                path = getFileFromPartkeepr(attachment["@id"], partkeepr_url, partkeepr_auth, filename=filename)
                 if path != None: #sometimes the source file might be deleted in partkeepr -> skip these
                     if verbose:
                         print(f'uploading attachment {path} for Part "{name}"')
@@ -632,7 +635,7 @@ def main():
                     upload_attachment(ipart, path, comment=comment)
                     os.unlink(path)
                 else:
-                    print(f'Failed to upload file "{attachment["originalFilename"]}" to part "{part["name"]}". Partkeepr did not provide the file!')
+                    print(f'Failed to upload file "{filename}" to part "{part["name"]}". Partkeepr did not provide the file!')
 
 
 
