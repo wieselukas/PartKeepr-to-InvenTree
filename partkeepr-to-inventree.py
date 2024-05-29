@@ -475,8 +475,8 @@ def main():
             description = part["description"]
         else:
             description = ""
-        if len(description) > 100:
-            description = description[:97] + "..."
+        if len(description) > 250:
+            description = description[:247] + "..."
         if part["internalPartNumber"].strip() == '' or part["internalPartNumber"] == '-':
             ipn = '#' + str(part["@id"].rpartition("/")[2])
         else:
