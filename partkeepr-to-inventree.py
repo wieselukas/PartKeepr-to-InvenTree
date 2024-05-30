@@ -160,7 +160,7 @@ def retry(retries, func, *args, **kwargs):
             func(*args, **kwargs)
             break
         except Exception as e:
-            print(f'Error running {func.__name__} for {retries}. time. Error message:')
+            print(f'Error running {func.__name__} for {attempt+1}. time. Error message:')
             print(f'\t{str(e)}')
             print('trying again...')
 
