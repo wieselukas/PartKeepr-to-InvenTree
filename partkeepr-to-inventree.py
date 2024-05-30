@@ -485,7 +485,7 @@ def main():
         if ("partUnit" in part) and (part["partUnit"] != None) and "shortName" in part["partUnit"]:
             units = part["partUnit"]["shortName"]
         quantity = max(0,part["stockLevel"]) # Inventree does not allow stock below 0
-        notes = f"**Partkeepr Status:** {part['status']}\n\n" if part["status"] != "" else ""
+        notes = f"**Partkeepr Status:** `{part['status']}`\n\n" if part["status"] != "" else ""
         notes += part["comment"]
         if (ipn+name) not in created_IPNs_map or name != created_IPNs_map[(ipn+name)]['name']:
             #check entry with same IPN and name were created before
