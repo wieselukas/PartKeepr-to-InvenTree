@@ -157,12 +157,13 @@ def create_child_categories(parent_category,category_map, inventree_api):
 def retry(retries, func, *args, **kwargs):
     for attempt in range(retries):
         try:
-            func(*args, **kwargs)
+            response = func(*args, **kwargs)
             break
         except Exception as e:
             print(f'Error running {func.__name__} for {attempt+1}. time. Error message:')
             print(f'\t{str(e)}')
             print('trying again...')
+    return response
 
 
 def copy_stock_history(pkpr_key, partkeepr_url, partkeepr_auth, inventree_api, stock_item_pk):
@@ -185,7 +186,7 @@ def copy_stock_history(pkpr_key, partkeepr_url, partkeepr_auth, inventree_api, s
     if verbose:
        print(f"Copying stock history for Part: {pkpr_stock_changes[0]['part']['name']}")
     #upload to Inventree
-    part_StockItem = StockItem(api=inventree_api, pk=stock_item_pk)
+    part_StockItem = retry(10, StockItem, api=inventree_api, pk=stock_item_pk)
           
     for i, pkpr_el in enumerate(pkpr_stock_changes):
         time = datetime.datetime.strptime(pkpr_el['dateTime'], '%Y-%m-%dT%H:%M:%S%z').strftime('%d.%m.%Y %H:%M')
