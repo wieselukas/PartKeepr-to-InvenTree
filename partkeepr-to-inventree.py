@@ -11,6 +11,7 @@ import tempfile
 import os
 import datetime
 import re
+import logging
 
 from inventree.api import InvenTreeAPI
 from inventree.part import PartCategory, Part
@@ -25,7 +26,20 @@ DEFAULT_CURRENCY = "EUR"
 
 verbose = False
 
+#logging from https://stackoverflow.com/questions/11325019/how-to-output-to-the-console-and-file
+logger = logging.getLogger('partkeepr-to-inventree')
+logging.getLogger().setLevel(logging.INFO)
 
+file_log_handler = logging.FileHandler('partkeepr-to-inventree.log', mode='w')
+logger.addHandler(file_log_handler)
+
+stderr_log_handler = logging.StreamHandler()
+logger.addHandler(stderr_log_handler)
+
+# nice output format
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%H:%M:%S')
+file_log_handler.setFormatter(formatter)
+stderr_log_handler.setFormatter(formatter)
 
 def getFromPartkeepr(url, base, auth):
     sep = '?'
@@ -84,9 +98,9 @@ def create(cls, inventree, attributes):
         except Exception as err:
             n += 1
             if verbose:
-                print(f'failed ({n}), waiting...')
+                logger.error(f'failed ({n}), waiting...')
             if n >= 10:
-                print(f'failed to create {cls.__name__} with attributes {attributes}: {err=}, {type(err)=}')
+                logger.error(f'failed to create {cls.__name__} with attributes {attributes}: {err=}, {type(err)=}')
                 break
             time.sleep(3)
 
@@ -101,9 +115,9 @@ def upload_image(item, file):
         except Exception as err:
             n += 1
             if verbose:
-                print(f'failed ({n}), waiting...')
+                logger.error(f'failed ({n}), waiting...')
             if n >= 10:
-                print(f'failed to upload image {file}: {err=}, {type(err)=}')
+                logger.error(f'failed to upload image {file}: {err=}, {type(err)=}')
                 break
             time.sleep(3)
 
@@ -118,9 +132,9 @@ def upload_attachment(item, file, comment=None):
         except Exception as err:
             n += 1
             if verbose:
-                print(f'failed ({n}), waiting...')
+                logger.error(f'failed ({n}), waiting...')
             if n >= 10:
-                print(f'failed to upload attachment {file}: {err=}, {type(err)=}')
+                logger.error(f'failed to upload attachment {file}: {err=}, {type(err)=}')
                 break
             time.sleep(3)
 
@@ -133,7 +147,7 @@ def create_it_category_w_parent(category, category_map, parent_id, inventree_api
         parent_it_pk = None
 
     if verbose:
-        print(f'create PartCategory "{category["name"]}", parent:{parent_it_pk}')
+        logger.info(f'create PartCategory "{category["name"]}", parent:{parent_it_pk}')
     icategory = create(PartCategory, inventree_api, {
         'name': category["name"],
         'description': category["description"],
@@ -160,9 +174,9 @@ def retry(retries, func, *args, **kwargs):
             response = func(*args, **kwargs)
             break
         except Exception as e:
-            print(f'Error running {func.__name__} for {attempt+1}. time. Error message:')
-            print(f'\t{str(e)}')
-            print('trying again...')
+            logger.error(f'Error running {func.__name__} for {attempt+1}. time. Error message:')
+            logger.error(f'\t{str(e)}')
+            logger.error('trying again...')
     return response
 
 
@@ -172,7 +186,7 @@ def copy_stock_history(pkpr_key, partkeepr_url, partkeepr_auth, inventree_api, s
 
     if len(pkpr_stock_changes) == 0:
         if verbose:
-            print('No Stock changes available for this part. Continue..')
+            logger.info('No Stock changes available for this part. Continue..')
         return
 
     stock_changes = [entr['stockLevel'] for entr in pkpr_stock_changes]
@@ -184,7 +198,7 @@ def copy_stock_history(pkpr_key, partkeepr_url, partkeepr_auth, inventree_api, s
     stock_changes_no_negative = [0 - (stock_levels_no_negative[i] - el) for i,el in enumerate(stock_levels_no_negative[1:])]
 
     if verbose:
-       print(f"Copying stock history for Part: {pkpr_stock_changes[0]['part']['name']}")
+       logger.info(f"Copying stock history for Part: {pkpr_stock_changes[0]['part']['name']}")
     #upload to Inventree
     part_StockItem = retry(10, StockItem, api=inventree_api, pk=stock_item_pk)
           
@@ -212,7 +226,7 @@ def copy_stock_history(pkpr_key, partkeepr_url, partkeepr_auth, inventree_api, s
 
 def usage():
     print("""partkeepr-to-inventree [options]
-    -v     --verbose        operate more verbosely
+    -v     --verbose        operate more verbosely (logging AND terminal output)
     -h     --help           show this usage information
     -p URL --partkeepr=URL  use this URL to connect PartKeepr
     -i URL --inventree=URL  use this URL to connect InvenTree
@@ -274,67 +288,67 @@ def main():
 
     for table in wipe:
         if table == "Part":
-            print(f'deleting StockItems...')
+            logger.info(f'deleting StockItems...')
             stock_items = StockItem.list(inventree)
             for stock_item in stock_items:
                 if verbose:
-                    print(f'delete StockItem "{stock_item.part}"')
+                    logger.info(f'delete StockItem "{stock_item.part}"')
                 stock_item.delete()
-            print(f'deleting Parts...')
+            logger.info(f'deleting Parts...')
             parts = Part.list(inventree)
             for part in parts:
                 if verbose:
-                    print(f'delete Part "{part.name}"')
+                    logger.info(f'delete Part "{part.name}"')
                 try:
                     part._data['active'] = False
                     part._data['image'] = None      # needs to be removed, as otherwise saving doesn't work
                     part.save()
                     part.delete()
                 except Exception as err:
-                    print(f'deleting Part "{part.name}" failed')
+                    logger.info(f'deleting Part "{part.name}" failed')
 
         elif table == "PartCategory":
-            print(f'deleting PartCategories...')
+            logger.info(f'deleting PartCategories...')
             categories = PartCategory.list(inventree)
             for category in categories:
                 if verbose:
-                    print(f'delete PartCategory "{category.name}"')
+                    logger.info(f'delete PartCategory "{category.name}"')
                 try:
                     category.delete()
                 except Exception as err:
-                    print(f'failed')
+                    logger.error(f'failed')
         elif table == "StockLocation":
-            print(f'deleting StockLocations...')
+            logger.info(f'deleting StockLocations...')
             locations = StockLocation.list(inventree)
             for location in locations:
                 if verbose:
-                    print(f'delete StockLocation "{location.name}"')
+                    logger.info(f'delete StockLocation "{location.name}"')
                 try:
                     location.delete()
                 except Exception as err:
-                    print(f'deleting StockLocation "{location.name}" failed')
+                    logger.error(f'deleting StockLocation "{location.name}" failed')
         elif table == "Company":
-            print(f'deleting Companies...')
+            logger.info(f'deleting Companies...')
             companies = Company.list(inventree)
             for company in companies:
                 if verbose:
-                    print(f'delete Company "{company.name}"')
+                    logger.info(f'delete Company "{company.name}"')
                 try:
                     company.delete()
                 except Exception as err:
-                    print(f'deleting Company "{company.name} failed')
+                    logger.error(f'deleting Company "{company.name} failed')
         else:
-            print(f'unknown table {table} to wipe')
+            logger.error(f'unknown table {table} to wipe')
 
     companies = getFromPartkeepr("/api/manufacturers", partkeepr_url, partkeepr_auth)
 
-    print(f'found {len(companies)} manufacturers, creating Companies...')
+    logger.info(f'found {len(companies)} manufacturers, creating Companies...')
 
     company_map = {} # mapped by name
     for company in companies:
         if not company["name"] in company_map:
             if verbose:
-                print(f'create Company "{company["name"]}"')
+                logger.info(f'create Company "{company["name"]}"')
             if ("url" in company) and (company["url"] != None):
                 website = company["url"]
                 if (not "http" in website) and len(website) >= 3:
@@ -352,18 +366,18 @@ def main():
             if ("icLogos" in company) and (company["icLogos"] != None) and len(company["icLogos"]) >= 1:
                 path = getImageFromPartkeepr(company["icLogos"][0]["@id"], partkeepr_url, partkeepr_auth, filename=company["icLogos"][0]["originalFilename"])
                 if verbose:
-                    print(f'uploading logo {company["icLogos"][0]["originalFilename"]}')
+                    logger.info(f'uploading logo {company["icLogos"][0]["originalFilename"]}')
                 upload_image(icompany, path)
                 os.unlink(path)
 
     companies = getFromPartkeepr("/api/distributors", partkeepr_url, partkeepr_auth)
 
-    print(f'found {len(companies)} distributors, creating Companies...')
+    logger.info(f'found {len(companies)} distributors, creating Companies...')
 
     for company in companies:
         if not company["name"] in company_map:
             if verbose:
-                print(f'create Company "{company["name"]}"')
+                logger.info(f'create Company "{company["name"]}"')
             if ("url" in company) and (company["url"] != None):
                 website = company["url"]
                 if not "http" in website:
@@ -381,16 +395,16 @@ def main():
             if ("icLogos" in company) and (company["icLogos"] != None) and len(company["icLogos"]) >= 1:
                 path = getImageFromPartkeepr(company["icLogos"][0]["@id"], partkeepr_url, partkeepr_auth, filename=company["icLogos"][0]["originalFilename"])
                 if verbose:
-                    print(f'uploading logo {company["icLogos"][0]["originalFilename"]}')
+                    logger.info(f'uploading logo {company["icLogos"][0]["originalFilename"]}')
                 upload_image(icompany, path)
                 os.unlink(path)
         else:
-            print(f'Company "{company["name"]} already exists (as manufaturer?) while creating supplier')
+            logger.error(f'Company "{company["name"]} already exists (as manufaturer?) while creating supplier')
             sys.exit(1)
 
     categories = getFromPartkeepr("/api/part_categories", partkeepr_url, partkeepr_auth)
     
-    print(f'found {len(categories)} part categories, creating PartCategories...')
+    logger.info(f'found {len(categories)} part categories, creating PartCategories...')
 
     category_map = {} # mapped by @id
     for category in categories:
@@ -410,7 +424,7 @@ def main():
     # IntenTree hiercarchy of stock locations
     location_categories = getFromPartkeepr("/api/storage_location_categories", partkeepr_url, partkeepr_auth)
 
-    print(f'found {len(location_categories)} location categories, creating StockLocations...')
+    logger.info(f'found {len(location_categories)} location categories, creating StockLocations...')
 
     location_map = {} # mapped by @id
     for location in location_categories:
@@ -423,7 +437,7 @@ def main():
         else:
             description = "-"
         if verbose:
-            print(f'create StockLocation "{location["name"]}", parent:{parent_pk}')
+            logger.info(f'create StockLocation "{location["name"]}", parent:{parent_pk}')
         ilocation = create(StockLocation, inventree, {
             'name': location["name"],
             'description': description,
@@ -433,7 +447,7 @@ def main():
 
     locations = getFromPartkeepr("/api/storage_locations", partkeepr_url, partkeepr_auth)
 
-    print(f'found {len(locations)} locations, creating StockLocations...')
+    logger.info(f'found {len(locations)} locations, creating StockLocations...')
 
     for location in locations:
         if location["category"]:
@@ -441,7 +455,7 @@ def main():
         else:
             parent_pk = None
         if verbose:
-            print(f'create StockLocation "{location["name"]}", parent:{parent_pk}')
+            logger.info(f'create StockLocation "{location["name"]}", parent:{parent_pk}')
         ilocation = create(StockLocation, inventree, {
             'name': location["name"],
             'description': location["name"], # no description on PartKeepr
@@ -451,7 +465,7 @@ def main():
 
     parts = getFromPartkeepr("/api/parts", partkeepr_url, partkeepr_auth)
 
-    print(f'found {len(parts)} parts, creating Parts, StockItems, ')
+    logger.info(f'found {len(parts)} parts, creating Parts, StockItems, ')
 
     supplier_part_map = {} 
     created_IPNs_map = {} #key = "IPN"+"name"
@@ -464,7 +478,7 @@ def main():
                 location_pk = location_map[part["storageLocation"]["@id"]]
             except:
                 location_pk = None
-                print(f'could not handle storageLocation {part["storageLocation"]["@id"]} while creating Part {name}')
+                logger.error(f'could not handle storageLocation {part["storageLocation"]["@id"]} while creating Part {name}')
         else:
             location_pk = None
         if part["averagePrice"]:
@@ -491,7 +505,7 @@ def main():
         if (ipn+name) not in created_IPNs_map or name != created_IPNs_map[(ipn+name)]['name']:
             #check entry with same IPN and name were created before
             if verbose:
-                print(f'create Part "{part["name"]}", category:{category_pk}, quantity:{quantity}')
+                logger.info(f'create Part "{part["name"]}", category:{category_pk}, quantity:{quantity}')
             ipart = create(Part, inventree, {
                 'name': name,
                 'description': description,
@@ -512,7 +526,7 @@ def main():
                 created_IPNs_map[(ipn+name)] = ipart
         else: # Part Entry already created, only add the StockItem and continue with next Part
             if verbose:
-                print(f'create additional StockItem for "{created_IPNs_map[ipn+name]["name"]}", category:{category_pk}, quantity:{quantity}')
+                logger.info(f'create additional StockItem for "{created_IPNs_map[ipn+name]["name"]}", category:{category_pk}, quantity:{quantity}')
             istock = create(StockItem, inventree, {
                 'part': created_IPNs_map[(ipn+name)].pk,
                 'quantity': 0 if copy_history else quantity,
@@ -530,7 +544,7 @@ def main():
                 )
             continue
         if verbose:
-            print(f'create StockItem "{part["name"]}", category:{category_pk}, quantity:{quantity}')
+            logger.info(f'create StockItem "{part["name"]}", category:{category_pk}, quantity:{quantity}')
         istock = create(StockItem, inventree, {
             'part': ipart.pk,
             'quantity': 0 if copy_history else quantity,
@@ -551,20 +565,20 @@ def main():
             for manufacturer in part["manufacturers"]:
                 if manufacturer["manufacturer"] == None:
                     mpk = None
-                    print(f'no actual manufacturer data known while creating ManufacturerPart {name}')
+                    logger.error(f'no actual manufacturer data known while creating ManufacturerPart {name}')
                 elif manufacturer["manufacturer"]["name"] in company_map:
                     mpk = company_map[manufacturer["manufacturer"]["name"]]
                 else:
                     mpk = None
-                    print(f'manufacturer "{manufacturer["manufacturer"]["name"]}" not known as a Company while creating ManufacturerPart {name}')
+                    logger.error(f'manufacturer "{manufacturer["manufacturer"]["name"]}" not known as a Company while creating ManufacturerPart {name}')
                 if (manufacturer["partNumber"] != None) and (len(manufacturer["partNumber"]) >= 1):
                     mpn = manufacturer["partNumber"]
                 else:
                     mpn = "?" # XXX None
-                    print(f'manufacturer part number unknown while creating ManufacturerPart {name}')
+                    logger.error(f'manufacturer part number unknown while creating ManufacturerPart {name}')
                 if (mpk != None) and (mpn != None):
                     if verbose:
-                        print(f'create ManufacturerPart "{part["name"]}"')
+                        logger.info(f'create ManufacturerPart "{part["name"]}"')
                     impart = create(ManufacturerPart, inventree, {
                         'part': ipart.pk,
                         'manufacturer': mpk,
@@ -577,7 +591,7 @@ def main():
                     spk = company_map[distributor["distributor"]["name"]]
                 else:
                     spk = None
-                    print(f'distributor "{distributor["distributor"]["name"]}" not known as a Company while creating SupplierPart {name}')
+                    logger.info(f'distributor "{distributor["distributor"]["name"]}" not known as a Company while creating SupplierPart {name}')
                 #assign manufacturer
                 mpk = None
                 if impart != None and len(part["manufacturers"]) == 1: #assignment only clear if only one manufacturer is assigned
@@ -590,12 +604,12 @@ def main():
                 else:
                     sku = "?" # must not be an empty string?!
                     if verbose:
-                        print(f'distributor SKU not defined while creating SupplierPart "{name}", using a "-" placeholder')
+                        logger.error(f'distributor SKU not defined while creating SupplierPart "{name}", using a "-" placeholder')
                 if (spk != None) and (sku != None):
                     key = f'{ipart.pk}:{spk}:{sku}'
                     if not key in supplier_part_map:
                         if verbose:
-                            print(f'create SupplierPart "{part["name"]}"')
+                            logger.info(f'create SupplierPart "{part["name"]}"')
                         #print(part)
                         #print(f'XXX {ipart.pk} {spk}({distributor["distributor"]["name"]}) {sku}')
                         ispart = create(SupplierPart, inventree, {
@@ -607,7 +621,7 @@ def main():
                         supplier_part_map[key] = ispart
                     else:
                         if verbose:
-                            print(f'SupplierPart matching "{key}" for Part "{name}" was already created. Just add additional PriceBreak.')
+                            logger.info(f'SupplierPart matching "{key}" for Part "{name}" was already created. Just add additional PriceBreak.')
                     if distributor['price'] != None and distributor['price'] != "0.0000":
                         if distributor['currency'] == None:
                             currency = default_currency
@@ -629,15 +643,15 @@ def main():
                     path = getImageFromPartkeepr(attachment["@id"], partkeepr_url, partkeepr_auth, filename=filename)
                     if path != None: #sometimes the source file might be deleted in partkeepr -> skip these
                         if verbose:
-                            print(f'uploading image {path} for Part "{name}"')
+                            logger.info(f'uploading image {path} for Part "{name}"')
                         upload_image(ipart, path)
                         os.unlink(path)
                     else:
-                        print(f'Failed to upload file "{filename}" to part "{part["name"]}". Partkeepr did not provide the file!')
+                        logger.error(f'Failed to upload file "{filename}" to part "{part["name"]}". Partkeepr did not provide the file!')
                 path = getFileFromPartkeepr(attachment["@id"], partkeepr_url, partkeepr_auth, filename=filename)
                 if path != None: #sometimes the source file might be deleted in partkeepr -> skip these
                     if verbose:
-                        print(f'uploading attachment {path} for Part "{name}"')
+                        logger.info(f'uploading attachment {path} for Part "{name}"')
                     if (attachment["description"] != None) and (len(attachment["description"]) >= 1):
                         comment = attachment["description"]
                     else:
@@ -645,7 +659,7 @@ def main():
                     upload_attachment(ipart, path, comment=comment)
                     os.unlink(path)
                 else:
-                    print(f'Failed to upload file "{filename}" to part "{part["name"]}". Partkeepr did not provide the file!')
+                    logger.error(f'Failed to upload file "{filename}" to part "{part["name"]}". Partkeepr did not provide the file!')
 
 
 
