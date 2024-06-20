@@ -14,7 +14,7 @@ import re
 import logging
 
 from inventree.api import InvenTreeAPI
-from inventree.part import PartCategory, Part
+from inventree.part import PartCategory, Part, ParameterTemplate, Parameter
 from inventree.stock import StockItem, StockLocation
 from inventree.company import Company, ManufacturerPart, SupplierPart, SupplierPriceBreak
 
@@ -234,7 +234,7 @@ def usage():
            --wipe-all       wipe all objects
     --default-currency=STR  use 3 letter currency string as default
     --copy-history          copy stock history into InvenTree Stock Tracking
-object kinds are Part, PartCategory, StockLocation, Company
+object kinds are Part, PartCategory, StockLocation, Company, FootprintTemplate
 URLs are given as http[s]://USER:PASSWORD@host.do.main""")
 
 
@@ -268,7 +268,7 @@ def main():
         elif o in ("-w", "--wipe"):
             wipe.append(a)
         elif o in ("--wipe-all"):
-            wipe = ["Part", "PartCategory", "StockLocation", "Company" ]
+            wipe = ["Part", "PartCategory", "StockLocation", "Company", "FootprintTemplate" ]
         elif o in ("--default-currency"):
             default_currency = a
         elif o in ("--copy-history"):
@@ -336,7 +336,21 @@ def main():
                 try:
                     company.delete()
                 except Exception as err:
-                    logger.error(f'deleting Company "{company.name} failed')
+                    logger.error(f'deleting Company "{company.name}" failed')
+        elif table == "FootprintTemplate":
+            logger.info(f'deleting "Footprint" Parameter Template...')
+            param_templates = ParameterTemplate.list(inventree)
+            foundFootprintTemplate = False
+            for param_template in param_templates:
+                if param_template['name'] == 'Footprint':
+                    foundFootprintTemplate = True
+                    try:
+                        param_template.delete()
+                    except Exception as err:
+                        logger.error(f'deleting "Footprint" Parameter Template failed')
+            if not foundFootprintTemplate:
+                logger.error(f'Did not find any "Footprint" parameter template.')
+
         else:
             logger.error(f'unknown table {table} to wipe')
 
@@ -465,20 +479,42 @@ def main():
 
     parts = getFromPartkeepr("/api/parts", partkeepr_url, partkeepr_auth)
 
-    logger.info(f'found {len(parts)} parts, creating Parts, StockItems, ')
+    logger.info(f'found {len(parts)} parts')
+
+    #create Footprtint parameter template 
+    logger.info(f'Obtaining Footprints from Parts')
+
+    footprint_names = []
+    for part in parts:
+        try:
+            footprint_names.append(part['footprint']['name'])
+        except TypeError:
+            continue
+    footprint_names = list(set(footprint_names)) # make distinct
+    footprint_names.sort()
+    ifptemplate = create(ParameterTemplate, inventree, {  
+        "name": "Footprint",
+        "units": "",
+        "description": "Footprint in text format",
+        "checkbox": False,
+        "choices": ','.join(footprint_names)
+        })
+
+    #create Parts
+    logger.info(f'Creating Parts, Attachements, StockItems, SupplierParts')
 
     supplier_part_map = {} 
     created_IPNs_map = {} #key = "IPN"+"name"
-    for part in parts:
+    for part_idx, part in enumerate(parts):
         #print(part)
         category_pk = category_map[int(part["category"]["@id"].rpartition("/")[2])]
-        name = part["name"].strip() #remove leading + trailing space, as it will anyways be done by inventree api
+        part_name = part["name"].strip() #remove leading + trailing space, as it will anyways be done by inventree api
         if part["storageLocation"]:
             try:
                 location_pk = location_map[part["storageLocation"]["@id"]]
             except:
                 location_pk = None
-                logger.error(f'could not handle storageLocation {part["storageLocation"]["@id"]} while creating Part {name}')
+                logger.error(f'could not handle storageLocation {part["storageLocation"]["@id"]} while creating Part {part_name}')
         else:
             location_pk = None
         if part["averagePrice"]:
@@ -502,12 +538,13 @@ def main():
         quantity = max(0,part["stockLevel"]) # Inventree does not allow stock below 0
         notes = f"**Partkeepr Status:** `{part['status']}`\n\n" if part["status"] != "" else ""
         notes += part["comment"]
-        if (ipn+name) not in created_IPNs_map or name != created_IPNs_map[(ipn+name)]['name']:
+        ipart = None
+        if (ipn+part_name) not in created_IPNs_map or part_name != created_IPNs_map[(ipn+part_name)]['name']:
             #check entry with same IPN and name were created before
             if verbose:
-                logger.info(f'create Part "{part["name"]}", category:{category_pk}, quantity:{quantity}')
+                logger.info(f'({part_idx}/{len(parts)}) Create Part "{part["name"]}", category:{category_pk}, quantity:{quantity}')
             ipart = create(Part, inventree, {
-                'name': name,
+                'name': part_name,
                 'description': description,
                 'IPN': ipn,
                 'category': category_pk,
@@ -523,12 +560,12 @@ def main():
                 'assembly': part["metaPart"],
                 })
             if ipart != None:
-                created_IPNs_map[(ipn+name)] = ipart
+                created_IPNs_map[(ipn+part_name)] = ipart
         else: # Part Entry already created, only add the StockItem and continue with next Part
             if verbose:
-                logger.info(f'create additional StockItem for "{created_IPNs_map[ipn+name]["name"]}", category:{category_pk}, quantity:{quantity}')
+                logger.info(f'create additional StockItem for "{created_IPNs_map[ipn+part_name]["name"]}", category:{category_pk}, quantity:{quantity}')
             istock = create(StockItem, inventree, {
-                'part': created_IPNs_map[(ipn+name)].pk,
+                'part': created_IPNs_map[(ipn+part_name)].pk,
                 'quantity': 0 if copy_history else quantity,
                 'delete_on_deplete': False,
                 'location': location_pk,
@@ -565,17 +602,17 @@ def main():
             for manufacturer in part["manufacturers"]:
                 if manufacturer["manufacturer"] == None:
                     mpk = None
-                    logger.error(f'no actual manufacturer data known while creating ManufacturerPart {name}')
+                    logger.error(f'no actual manufacturer data known while creating ManufacturerPart {part_name}')
                 elif manufacturer["manufacturer"]["name"] in company_map:
                     mpk = company_map[manufacturer["manufacturer"]["name"]]
                 else:
                     mpk = None
-                    logger.error(f'manufacturer "{manufacturer["manufacturer"]["name"]}" not known as a Company while creating ManufacturerPart {name}')
+                    logger.error(f'manufacturer "{manufacturer["manufacturer"]["name"]}" not known as a Company while creating ManufacturerPart {part_name}')
                 if (manufacturer["partNumber"] != None) and (len(manufacturer["partNumber"]) >= 1):
                     mpn = manufacturer["partNumber"]
                 else:
                     mpn = "?" # XXX None
-                    logger.error(f'manufacturer part number unknown while creating ManufacturerPart {name}')
+                    logger.error(f'manufacturer part number unknown while creating ManufacturerPart {part_name}')
                 if (mpk != None) and (mpn != None):
                     if verbose:
                         logger.info(f'create ManufacturerPart "{part["name"]}"')
@@ -591,7 +628,7 @@ def main():
                     spk = company_map[distributor["distributor"]["name"]]
                 else:
                     spk = None
-                    logger.info(f'distributor "{distributor["distributor"]["name"]}" not known as a Company while creating SupplierPart {name}')
+                    logger.info(f'distributor "{distributor["distributor"]["name"]}" not known as a Company while creating SupplierPart {part_name}')
                 #assign manufacturer
                 mpk = None
                 if impart != None and len(part["manufacturers"]) == 1: #assignment only clear if only one manufacturer is assigned
@@ -604,7 +641,7 @@ def main():
                 else:
                     sku = "?" # must not be an empty string?!
                     if verbose:
-                        logger.error(f'distributor SKU not defined while creating SupplierPart "{name}", using a "-" placeholder')
+                        logger.error(f'distributor SKU not defined while creating SupplierPart "{part_name}", using a "-" placeholder')
                 if (spk != None) and (sku != None):
                     key = f'{ipart.pk}:{spk}:{sku}'
                     if not key in supplier_part_map:
@@ -621,7 +658,7 @@ def main():
                         supplier_part_map[key] = ispart
                     else:
                         if verbose:
-                            logger.info(f'SupplierPart matching "{key}" for Part "{name}" was already created. Just add additional PriceBreak.')
+                            logger.info(f'SupplierPart matching "{key}" for Part "{part_name}" was already created. Just add additional PriceBreak.')
                     if distributor['price'] != None and distributor['price'] != "0.0000":
                         if distributor['currency'] == None:
                             currency = default_currency
@@ -643,7 +680,7 @@ def main():
                     path = getImageFromPartkeepr(attachment["@id"], partkeepr_url, partkeepr_auth, filename=filename)
                     if path != None: #sometimes the source file might be deleted in partkeepr -> skip these
                         if verbose:
-                            logger.info(f'uploading image {path} for Part "{name}"')
+                            logger.info(f'uploading image {path} for Part "{part_name}"')
                         upload_image(ipart, path)
                         os.unlink(path)
                     else:
@@ -651,7 +688,7 @@ def main():
                 path = getFileFromPartkeepr(attachment["@id"], partkeepr_url, partkeepr_auth, filename=filename)
                 if path != None: #sometimes the source file might be deleted in partkeepr -> skip these
                     if verbose:
-                        logger.info(f'uploading attachment {path} for Part "{name}"')
+                        logger.info(f'uploading attachment {path} for Part "{part_name}"')
                     if (attachment["description"] != None) and (len(attachment["description"]) >= 1):
                         comment = attachment["description"]
                     else:
@@ -660,6 +697,16 @@ def main():
                     os.unlink(path)
                 else:
                     logger.error(f'Failed to upload file "{filename}" to part "{part["name"]}". Partkeepr did not provide the file!')
+        if (part["footprint"] != None):
+            if part["footprint"]["name"]:
+                if part["footprint"]["name"] != '':
+                    if verbose:
+                        logger.info(f'Add footprint "{part["footprint"]["name"]}" to Part "{part_name}"')
+                    ifpparameter = create(Parameter, inventree, {
+                        "part": ipart.pk,
+                        "template": ifptemplate.pk,
+                        "data": part["footprint"]["name"]
+                    })
 
 
 
