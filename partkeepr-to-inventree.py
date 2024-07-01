@@ -542,7 +542,7 @@ def main():
         if (ipn+part_name) not in created_IPNs_map or part_name != created_IPNs_map[(ipn+part_name)]['name']:
             #check entry with same IPN and name were created before
             if verbose:
-                logger.info(f'({part_idx}/{len(parts)}) Create Part "{part["name"]}", category:{category_pk}, quantity:{quantity}')
+                logger.info(f'({part_idx+1}/{len(parts)}) Create Part "{part["name"]}", category:{category_pk}, quantity:{quantity}')
             ipart = create(Part, inventree, {
                 'name': part_name,
                 'description': description,
