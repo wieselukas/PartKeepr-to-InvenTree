@@ -11,3 +11,6 @@ It handles many, though not all data structures.
 
 Add -v for a more verbose operation.
 
+## Contribution
+
+Given that I will hopefully not need to migrate from partkeepr to inventree again, I will unfortunately also not put any more work into the script. But in case you want to fork the project and have questions about the implementation please feel very free to reach out!
