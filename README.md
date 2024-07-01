@@ -7,7 +7,7 @@ It handles many, though not all data structures.
 
 ## Usage:
 
-./partkeepr-to-inventree.py -p https://USER:PASSWORD@partkeepr.example.com -i http://admin:PASSWORD@inventree.example.com --wipe-all
+./partkeepr-to-inventree.py -p https://USER:PASSWORD@partkeepr.example.com -i http://admin:PASSWORD@inventree.example.com --wipe-all --default-currency=EUR --copy-history
 
 Add -v for a more verbose operation.
 
