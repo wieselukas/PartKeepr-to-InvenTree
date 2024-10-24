@@ -23,7 +23,7 @@ from inventree.company import Company, ManufacturerPart, SupplierPart, SupplierP
 DEFAULT_PARTKEEPR = "https://admin:password@partkeepr.ibr.cs.tu-bs.de"
 DEFAULT_INVENTREE = "http://admin:password@inventree.ibr.cs.tu-bs.de:1337"
 DEFAULT_CURRENCY = "EUR"
-
+    
 verbose = False
 
 #logging from https://stackoverflow.com/questions/11325019/how-to-output-to-the-console-and-file
@@ -146,8 +146,8 @@ def create_it_category_w_parent(category, category_map, parent_id, inventree_api
     else:
         parent_it_pk = None
 
-    # Ensure description is not None
-    description = category.get("description", "No description provided") or "No description provided"
+    # Handle None or missing description
+    description = category.get("description", None) or ""
 
     # Log the category creation attempt
     if verbose:
