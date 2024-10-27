@@ -14,7 +14,7 @@ import re
 import logging
 
 from inventree.api import InvenTreeAPI
-from inventree.part import PartCategory, Part, ParameterTemplate, Parameter
+from inventree.part import PartCategory, Part, ParameterTemplate, Parameter, InternalPrice
 from inventree.stock import StockItem, StockLocation
 from inventree.company import Company, ManufacturerPart, SupplierPart, SupplierPriceBreak
 
@@ -23,7 +23,7 @@ from inventree.company import Company, ManufacturerPart, SupplierPart, SupplierP
 DEFAULT_PARTKEEPR = "https://admin:password@partkeepr.ibr.cs.tu-bs.de"
 DEFAULT_INVENTREE = "http://admin:password@inventree.ibr.cs.tu-bs.de:1337"
 DEFAULT_CURRENCY = "EUR"
-
+    
 verbose = False
 
 #logging from https://stackoverflow.com/questions/11325019/how-to-output-to-the-console-and-file
@@ -88,7 +88,6 @@ def getFileFromPartkeepr(url, base, auth, filename="file"):
     return None
 
 
-
 def create(cls, inventree, attributes):
     n = 0
     while True:
@@ -141,31 +140,56 @@ def upload_attachment(item, file, comment=None):
 def create_it_category_w_parent(category, category_map, parent_id, inventree_api):
     category_id = int(category['@id'].rpartition("/")[2])
 
-    if parent_id:
-        parent_it_pk = category_map[parent_id]
+    # Handle parent_id being None (i.e., root categories)
+    if parent_id is not None:
+        parent_it_pk = category_map.get(parent_id, None)
     else:
         parent_it_pk = None
 
-    if verbose:
-        logger.info(f'create PartCategory "{category["name"]}", parent:{parent_it_pk}')
-    icategory = create(PartCategory, inventree_api, {
-        'name': category["name"],
-        'description': category["description"],
-        'parent': parent_it_pk,
-        })
-    return category_id, icategory
+    # Handle None or missing description
+    description = category.get("description", None) or ""
 
-def create_child_categories(parent_category,category_map, inventree_api):
-    '''recursively runs through all childs, child-childs, ... and creates them in inventree'''
+    # Log the category creation attempt
+    if verbose:
+        logger.info(f'Creating PartCategory "{category["name"]}", parent:{parent_it_pk}')
+
+    # Try to create the category
+    try:
+        icategory = create(PartCategory, inventree_api, {
+            'name': category["name"],
+            'description': description,  # Ensure a valid description is passed
+            'parent': parent_it_pk,
+        })
+        return category_id, icategory
+
+    except requests.exceptions.HTTPError as e:
+        # Log the error if the API request fails
+        logger.error(f"ERROR - failed to create PartCategory with attributes "
+                     f"{{'name': category['name'], 'description': description, 'parent': parent_it_pk}}: err={e}")
+        return category_id, None
+
+def create_child_categories(parent_category, category_map, inventree_api):
+    '''Recursively runs through all children, child-children, ... and creates them in inventree'''
     for sub_category in parent_category["children"]:
-        if not int(sub_category['@id'].rpartition("/")[2]) in category_map:
+        sub_category_id = int(sub_category['@id'].rpartition("/")[2])
+        
+        if sub_category_id not in category_map:
             # category doesn't yet exist, create it!
             parent_id = int(sub_category['parent'].rpartition("/")[2])
+            
+            # Create category and handle None case
             id, icategory = create_it_category_w_parent(sub_category, category_map, parent_id, inventree_api)
-            category_map[id] = icategory.pk
-        # continue recursing through children entries
+            
+            if icategory is not None:
+                category_map[id] = icategory.pk
+            else:
+                # Handle the case where icategory is None, log an error or continue
+                print(f"Warning: Failed to create category for {sub_category['name']}")
+        
+        # Continue recursing through children entries
         parent_category = sub_category
         category_map = create_child_categories(parent_category, category_map, inventree_api)
+    
     return category_map
 
 def retry(retries, func, *args, **kwargs):
@@ -253,6 +277,7 @@ def main():
     partkeepr_auth_url = DEFAULT_PARTKEEPR
     inventree_auth_url = DEFAULT_INVENTREE
     default_currency = DEFAULT_CURRENCY
+    
     wipe = []
 
     for o, a in opts:
@@ -420,7 +445,7 @@ def main():
     
     logger.info(f'found {len(categories)} part categories, creating PartCategories...')
 
-    category_map = {} # mapped by @id
+    category_map = {}  # mapped by @id
     for category in categories:
         if not int(category['@id'].rpartition("/")[2]) in category_map:
             if category["parent"]:
@@ -429,10 +454,18 @@ def main():
                 parent_id = None
 
             id, icategory = create_it_category_w_parent(category, category_map, parent_id, inventree)
-            category_map[id] = icategory.pk
-            
-            parent_category = category
-            category_map = create_child_categories(parent_category,category_map, inventree)
+
+            # Ensure icategory is not None before trying to access .pk
+            if icategory is not None:
+                category_map[id] = icategory.pk
+            else:
+                # Log a warning or skip this category creation
+                print(f"Warning: Failed to create category '{category['name']}' with ID {id}. Skipping.")
+                continue  # Skip further processing for this category
+
+        # Process child categories recursively
+        parent_category = category
+        category_map = create_child_categories(parent_category, category_map, inventree)
 
     # we convert Partkeepr location categories and locations to an
     # IntenTree hiercarchy of stock locations
@@ -589,6 +622,14 @@ def main():
             'location': location_pk,
             'notes': part['partCondition'] if part["partCondition"] != "" else None
         })
+        internal_price = None
+        if verbose:
+            logger.info(f'create additional InternalPrice for "{created_IPNs_map[ipn+part_name]["name"]}", price:{price}')
+        internal_price = create(InternalPrice, inventree, {
+            'part': ipart.pk,
+            'quantity':quantity,
+            'price': price,
+            })
         if copy_history:
             copy_stock_history(
                 pkpr_key = int(part["@id"].rpartition("/")[2]),
